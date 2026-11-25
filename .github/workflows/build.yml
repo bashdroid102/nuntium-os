@@ -1,0 +1,120 @@
+name: Build Nuntium OS Image & ISO
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    # Еженедельная пересборка со свежими патчами ядра и драйверов (воскресенье 04:00 UTC)
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      build_iso:
+        description: "Собрать загрузочный .iso и выложить в GitHub Releases"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Подготовка имен образа и тегов
+        run: |
+          IMAGE_NAME=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=v0.1-build-${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Освобождение места на диске раннера (~25-30 ГБ для сборки ISO)
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet \
+                      /opt/ghc \
+                      /usr/local/share/boost \
+                      /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL \
+                      /usr/local/.ghcup
+          sudo docker system prune -af || true
+          df -h
+
+      - name: Проверка и установка Podman
+        run: |
+          if ! command -v podman &>/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y podman
+          fi
+          podman --version
+
+      - name: Авторизация в GitHub Container Registry (ghcr.io)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Сборка контейнерного образа Nuntium OS
+        run: |
+          sudo podman build \
+            --pull=newer \
+            -t "${IMAGE_NAME}:latest" \
+            -t "${IMAGE_NAME}:${SHORT_SHA}" \
+            .
+
+      - name: Публикация образа в ghcr.io (для OTA-обновлений bootc)
+        run: |
+          sudo podman push "${IMAGE_NAME}:latest"
+          sudo podman push "${IMAGE_NAME}:${SHORT_SHA}"
+
+      - name: Генерация установочного ISO через bootc-image-builder
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        run: |
+          mkdir -p output
+          sudo podman run \
+            --rm \
+            --privileged \
+            --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v "$(pwd)/iso/config.toml:/config.toml:ro" \
+            -v "$(pwd)/output:/output" \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type anaconda-iso \
+            --rootfs btrfs \
+            --local \
+            "${IMAGE_NAME}:latest"
+          ls -lh output/bootiso/
+
+      - name: Подготовка ISO и контрольных сумм к публикации
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        run: |
+          mkdir -p release-files
+          ISO_PATH="output/bootiso/install.iso"
+          sha256sum "$ISO_PATH" | awk '{print $1 "  nuntium-os-amd64.iso"}' > release-files/SHA256SUMS.txt
+          # Делим файл на части по 1800 МБ для гарантированного прохождения лимита GitHub Releases (2 ГБ)
+          split -b 1800M -d "$ISO_PATH" release-files/nuntium-os-amd64.iso.part.
+          ls -lh release-files/
+
+      - name: Публикация ISO в GitHub Releases
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "Nuntium OS (${{ env.RELEASE_TAG }})"
+          prerelease: true
+          body: |
+            Автоматическая сборка **Nuntium OS** (Шаг 1 — Базовый образ).
+            - OCI-образ для обновлений: `${{ env.IMAGE_NAME }}:latest`
+            - Сборка из коммита: `${{ env.SHORT_SHA }}`
+
+            ### Как собрать ISO из частей в Windows (CMD):
+            Скачай все файлы `nuntium-os-amd64.iso.part.*` в одну папку, открой там командную строку и выполни:
+            ```cmd
+            copy /b nuntium-os-amd64.iso.part.* nuntium-os-amd64.iso
+            ```
+          files: |
+            release-files/nuntium-os-amd64.iso.part.*
+            release-files/SHA256SUMS.txt

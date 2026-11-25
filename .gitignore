@@ -1,0 +1,6 @@
+output/
+release-files/
+*.iso
+*.iso.part.*
+.DS_Store
+Thumbs.db

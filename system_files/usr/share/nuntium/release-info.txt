@@ -1,0 +1,3 @@
+Nuntium OS 1.0 (Balance)
+Architecture: x86_64 Atomic (bootc)
+Target Profile: Daily Security, Integrated Hysteria 2 VPN, Windows Ergonomics
