@@ -55,11 +55,22 @@ else
     echo 'VARIANT_ID=nuntium-balance' >> /usr/lib/os-release
 fi
 
-echo "=== [4/6] Сборка графических ассетов (Start-иконка, обои, Plymouth, SDDM) ==="
+echo "=== [4/6] Сборка графических ассетов (Start-иконка, аватар, обои, Plymouth, SDDM) ==="
+# Очистка возможных Windows CRLF в цветовых схемах и скриптах
+sed -i 's/\r$//' /usr/share/color-schemes/NuntiumDark.colors /usr/share/color-schemes/NuntiumLight.colors
+sed -i 's/\r$//' /usr/libexec/nuntium-apply-desktop.sh
+chmod +x /usr/libexec/nuntium-apply-desktop.sh
+
 # Иконка кнопки Пуск
 install -d /usr/share/icons/hicolor/scalable/apps
 cp /usr/share/nuntium/logo.svg /usr/share/icons/hicolor/scalable/apps/nuntium-start.svg
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+
+# Аватар пользователя по умолчанию (256x256 PNG) для Kickoff и SDDM
+rsvg-convert -w 256 -h 256 /usr/share/nuntium/logo.svg -o /usr/share/nuntium/avatar.png
+install -d /etc/skel
+cp /usr/share/nuntium/avatar.png /etc/skel/.face.icon
+ln -sf .face.icon /etc/skel/.face
 
 # Обои рабочего стола и SDDM (1920x1080 PNG из SVG)
 install -d /usr/share/wallpapers/Nuntium/contents/images
@@ -71,10 +82,6 @@ cp -a /usr/share/plymouth/themes/spinner/*.png /usr/share/plymouth/themes/nuntiu
 rsvg-convert -w 420 -h 320 /usr/share/nuntium/plymouth-brand.svg \
     -o /usr/share/plymouth/themes/nuntium/watermark.png
 plymouth-set-default-theme nuntium
-
-# Права на скрипт настройки рабочего стола и защита от Windows CRLF
-sed -i 's/\r$//' /usr/libexec/nuntium-apply-desktop.sh
-chmod +x /usr/libexec/nuntium-apply-desktop.sh
 
 echo "=== [5/6] Включение сервисов и пересборка initramfs с темой Plymouth ==="
 systemctl enable podman.socket
@@ -93,4 +100,4 @@ echo "=== [6/6] Очистка кэшей ==="
 $DNF clean all
 rm -rf /tmp/* /var/tmp/* /var/cache/dnf/* /var/cache/libdnf5/*
 
-echo "=== Сборка слоя Nuntium OS (Шаг 2 — Violet Design) успешно завершена ==="
+echo "=== Сборка слоя Nuntium OS (Шаг 2 — Violet Design + Avatar) успешно завершена ==="
