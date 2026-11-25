@@ -32,7 +32,7 @@ jobs:
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
           echo "RELEASE_TAG=v0.1-build-${{ github.run_number }}" >> $GITHUB_ENV
 
-      - name: Освобождение места на диске раннера (~25-30 ГБ для сборки ISO)
+      - name: Освобождение места на диске раннера (~25-30 ГБ)
         run: |
           df -h
           sudo rm -rf /usr/share/dotnet \
@@ -70,10 +70,8 @@ jobs:
           sudo podman push "${IMAGE_NAME}:${SHORT_SHA}"
 
       - name: Генерация установочного ISO через bootc-image-builder
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_iso }}
         run: |
-          # Снимаем ограничения AppArmor на временном Ubuntu-раннере GitHub,
-          # иначе Ubuntu 24.04 блокирует mount() и userns внутри osbuild
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo aa-teardown || true
 
@@ -99,24 +97,23 @@ jobs:
         run: sudo dmesg | tail -n 30 || true
 
       - name: Подготовка ISO и контрольных сумм к публикации
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_iso }}
         run: |
           mkdir -p release-files
           ISO_PATH="output/bootiso/install.iso"
           sha256sum "$ISO_PATH" | awk '{print $1 "  nuntium-os-amd64.iso"}' > release-files/SHA256SUMS.txt
-          # Делим файл на части по 1800 МБ для гарантированного прохождения лимита GitHub Releases (2 ГБ)
           split -b 1800M -d "$ISO_PATH" release-files/nuntium-os-amd64.iso.part.
           ls -lh release-files/
 
       - name: Публикация ISO в GitHub Releases
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_iso }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: "Nuntium OS (${{ env.RELEASE_TAG }})"
           prerelease: true
           body: |
-            Автоматическая сборка **Nuntium OS** (Шаг 1 — Базовый образ).
+            Автоматическая сборка **Nuntium OS**.
             - OCI-образ для обновлений: `${{ env.IMAGE_NAME }}:latest`
             - Сборка из коммита: `${{ env.SHORT_SHA }}`
 
