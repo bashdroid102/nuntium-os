@@ -41,16 +41,10 @@ for svc in abrtd.service abrt-oops.service abrt-xorg.service; do
 done
 
 echo "=== [3/5] Ребрендинг системы в Nuntium OS ==="
-# В атомарных системах /etc/os-release ссылается на /usr/lib/os-release.
-# Меняем поля через sed, сохраняя VERSION_ID базовой системы для совместимости с пакетами.
+# Оставляем ID=fedora для совместимости с bootc-image-builder и репозиториями.
+# В интерфейсе, загрузчике и fastfetch система будет отображаться как Nuntium OS.
 sed -i 's/^NAME=.*/NAME="Nuntium OS"/' /usr/lib/os-release
 sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Nuntium OS 1.0 (Balance)"/' /usr/lib/os-release
-sed -i 's/^ID=.*/ID=nuntium/' /usr/lib/os-release
-if grep -q '^ID_LIKE=' /usr/lib/os-release; then
-    sed -i 's/^ID_LIKE=.*/ID_LIKE="fedora"/' /usr/lib/os-release
-else
-    echo 'ID_LIKE="fedora"' >> /usr/lib/os-release
-fi
 if grep -q '^VARIANT=' /usr/lib/os-release; then
     sed -i 's/^VARIANT=.*/VARIANT="Nuntium Desktop (Balance)"/' /usr/lib/os-release
 else
