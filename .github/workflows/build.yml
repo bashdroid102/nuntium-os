@@ -72,12 +72,19 @@ jobs:
       - name: Генерация установочного ISO через bootc-image-builder
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
         run: |
+          # Снимаем ограничения AppArmor на временном Ubuntu-раннере GitHub,
+          # иначе Ubuntu 24.04 блокирует mount() и userns внутри osbuild
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo aa-teardown || true
+
           mkdir -p output
           sudo podman run \
             --rm \
             --privileged \
             --pull=newer \
-            --security-opt label=type:unconfined_t \
+            --security-opt apparmor=unconfined \
+            --security-opt seccomp=unconfined \
+            --security-opt label=disable \
             -v "$(pwd)/iso/config.toml:/config.toml:ro" \
             -v "$(pwd)/output:/output" \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
@@ -86,6 +93,10 @@ jobs:
             --rootfs btrfs \
             "${IMAGE_NAME}:latest"
           ls -lh output/bootiso/
+
+      - name: Диагностика ядра при ошибке
+        if: failure()
+        run: sudo dmesg | tail -n 30 || true
 
       - name: Подготовка ISO и контрольных сумм к публикации
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_iso }}
