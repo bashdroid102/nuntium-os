@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <radialGradient id="canvasBg" cx="50%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="#1D1B30" />
+      <stop offset="52%" stop-color="#141322" />
+      <stop offset="100%" stop-color="#0E0E18" />
+    </radialGradient>
+
+    <pattern id="subtleGrid" width="76" height="76" patternUnits="userSpaceOnUse">
+      <path d="M 76 0 L 0 0 0 76" fill="none" stroke="#9B8EFF" stroke-width="1" stroke-opacity="0.045" />
+    </pattern>
+
+    <radialGradient id="bokehPurple" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7F5BFF" stop-opacity="0.34" />
+      <stop offset="55%" stop-color="#5839C9" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#141322" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="bokehBlue" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5E8CFF" stop-opacity="0.28" />
+      <stop offset="60%" stop-color="#3B4FB8" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#141322" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="centerHalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8A63FF" stop-opacity="0.38" />
+      <stop offset="55%" stop-color="#4A3EB8" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#141322" stop-opacity="0" />
+    </radialGradient>
+
+    <linearGradient id="wLeftLeg" x1="15%" y1="100%" x2="75%" y2="10%">
+      <stop offset="0%" stop-color="#161A4A" />
+      <stop offset="45%" stop-color="#2E45D4" />
+      <stop offset="100%" stop-color="#8C74FF" />
+    </linearGradient>
+    <linearGradient id="wRightLeg" x1="20%" y1="100%" x2="85%" y2="5%">
+      <stop offset="0%" stop-color="#6136F2" />
+      <stop offset="52%" stop-color="#303BA4" />
+      <stop offset="100%" stop-color="#7B5EFF" />
+    </linearGradient>
+    <linearGradient id="wDiagRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#DACBFF" />
+      <stop offset="42%" stop-color="#8E71FF" />
+      <stop offset="100%" stop-color="#6A38FF" />
+    </linearGradient>
+    <linearGradient id="wCyanRim" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4BD6FF" />
+      <stop offset="50%" stop-color="#9278FF" />
+      <stop offset="100%" stop-color="#E2D4FF" />
+    </linearGradient>
+
+    <filter id="bokehBlur" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="38" />
+    </filter>
+    <filter id="heroGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  
+  <rect width="1920" height="1080" fill="url(#canvasBg)" />
+  <rect width="1920" height="1080" fill="url(#subtleGrid)" />
+
+  
+  <g filter="url(#bokehBlur)">
+    <circle cx="1520" cy="230" r="140" fill="url(#bokehBlue)" />
+    <circle cx="1710" cy="370" r="110" fill="url(#bokehBlue)" opacity="0.65" />
+    <circle cx="430" cy="790" r="165" fill="url(#bokehPurple)" />
+    <circle cx="195" cy="910" r="240" fill="url(#bokehPurple)" opacity="0.75" />
+    <circle cx="1540" cy="920" r="190" fill="url(#bokehPurple)" opacity="0.55" />
+  </g>
+
+  
+  <ellipse cx="960" cy="400" rx="430" ry="310" fill="url(#centerHalo)" />
+
+  
+  <g transform="translate(658, 92) scale(4.7)" filter="url(#heroGlow)">
+    <path d="M31 93 C28 91, 35 55, 42 36 C47 26, 61 27, 63 39 L53 71 C49 84, 38 97, 31 93 Z" fill="url(#wLeftLeg)" stroke="url(#wCyanRim)" stroke-width="1.35" />
+    <path d="M68 89 C67 76, 75 46, 86 33 C92 27, 100 28, 99 35 C97 49, 90 77, 82 91 C78 97, 69 96, 68 89 Z" fill="url(#wRightLeg)" stroke="url(#wCyanRim)" stroke-width="1.35" />
+    <path d="M40 43 C44 26, 60 25, 66 39 L86 78 C91 88, 82 99, 72 95 C66 93, 62 87, 58 79 L44 50 C42 46, 39 46, 40 43 Z" fill="url(#wDiagRibbon)" fill-opacity="0.92" stroke="#D8C9FF" stroke-width="1.0" />
+  </g>
+
+  
+  <text x="932" y="742" text-anchor="middle" fill="#FFFFFF" font-family="DejaVu Sans, sans-serif" font-size="112" font-weight="700" letter-spacing="-2.5">nuntium</text>
+  <text x="1218" y="698" text-anchor="start" fill="#8C7EFF" font-family="DejaVu Sans, sans-serif" font-size="48" font-weight="700" letter-spacing="2">OS</text>
+</svg>

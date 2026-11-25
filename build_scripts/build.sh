@@ -3,7 +3,7 @@ set -ouex pipefail
 
 DNF=$(command -v dnf5 || command -v dnf)
 
-echo "=== [1/5] Установка базового стека безопасности, AMD Vulkan и контейнеров ==="
+echo "=== [1/6] Установка стека безопасности, AMD Vulkan, контейнеров и утилит графики ==="
 $DNF install -y \
     bubblewrap \
     usbguard \
@@ -15,9 +15,11 @@ $DNF install -y \
     mesa-vulkan-drivers \
     vulkan-loader \
     vulkan-tools \
+    librsvg2-tools \
+    plymouth-theme-spinner \
     fastfetch
 
-echo "=== [2/5] Удаление лишних пакетов и отключение фоновых сборщиков отчетов ==="
+echo "=== [2/6] Удаление лишних пакетов и отключение сборщиков отчетов ==="
 REMOVE_PKGS=(
     kmines
     kmahjongg
@@ -33,16 +35,13 @@ for pkg in "${REMOVE_PKGS[@]}"; do
     fi
 done
 
-# Отключаем автоматическую отправку отчетов о сбоях (если присутствует в образе)
 for svc in abrtd.service abrt-oops.service abrt-xorg.service; do
     if systemctl list-unit-files "$svc" &>/dev/null; then
         systemctl mask "$svc" || true
     fi
 done
 
-echo "=== [3/5] Ребрендинг системы в Nuntium OS ==="
-# Оставляем ID=fedora для совместимости с bootc-image-builder и репозиториями.
-# В интерфейсе, загрузчике и fastfetch система будет отображаться как Nuntium OS.
+echo "=== [3/6] Ребрендинг системы в Nuntium OS ==="
 sed -i 's/^NAME=.*/NAME="Nuntium OS"/' /usr/lib/os-release
 sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Nuntium OS 1.0 (Balance)"/' /usr/lib/os-release
 if grep -q '^VARIANT=' /usr/lib/os-release; then
@@ -56,12 +55,42 @@ else
     echo 'VARIANT_ID=nuntium-balance' >> /usr/lib/os-release
 fi
 
-echo "=== [4/5] Включение базовых системных сервисов ==="
-systemctl enable podman.socket
-# usbguard и жесткий nftables Kill-Switch будут активированы после генерации правил на Шагах 3 и 5
+echo "=== [4/6] Сборка графических ассетов (Start-иконка, обои, Plymouth, SDDM) ==="
+# Иконка кнопки Пуск
+install -d /usr/share/icons/hicolor/scalable/apps
+cp /usr/share/nuntium/logo.svg /usr/share/icons/hicolor/scalable/apps/nuntium-start.svg
+gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 
-echo "=== [5/5] Очистка кэшей для минимального размера образа ==="
+# Обои рабочего стола и SDDM (1920x1080 PNG из SVG)
+install -d /usr/share/wallpapers/Nuntium/contents/images
+rsvg-convert -w 1920 -h 1080 /usr/share/nuntium/wallpaper-dark.svg \
+    -o /usr/share/wallpapers/Nuntium/contents/images/1920x1080.png
+
+# Сборка темы Plymouth на базе анимации spinner + фирменный логотип Nuntium OS (420x320)
+cp -a /usr/share/plymouth/themes/spinner/*.png /usr/share/plymouth/themes/nuntium/ || true
+rsvg-convert -w 420 -h 320 /usr/share/nuntium/plymouth-brand.svg \
+    -o /usr/share/plymouth/themes/nuntium/watermark.png
+plymouth-set-default-theme nuntium
+
+# Права на скрипт настройки рабочего стола и защита от Windows CRLF
+sed -i 's/\r$//' /usr/libexec/nuntium-apply-desktop.sh
+chmod +x /usr/libexec/nuntium-apply-desktop.sh
+
+echo "=== [5/6] Включение сервисов и пересборка initramfs с темой Plymouth ==="
+systemctl enable podman.socket
+
+KVER=$(ls /usr/lib/modules | head -n 1)
+DRACUT_NO_XATTR=1 dracut \
+    --no-hostonly \
+    --kver "$KVER" \
+    --reproducible \
+    --zstd \
+    -v \
+    --add plymouth \
+    -f "/usr/lib/modules/${KVER}/initramfs.img"
+
+echo "=== [6/6] Очистка кэшей ==="
 $DNF clean all
 rm -rf /tmp/* /var/tmp/* /var/cache/dnf/* /var/cache/libdnf5/*
 
-echo "=== Сборка базового слоя Nuntium OS успешно завершена ==="
+echo "=== Сборка слоя Nuntium OS (Шаг 2 — Violet Design) успешно завершена ==="

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 320" width="420" height="320">
+  <defs>
+    <radialGradient id="logoAura" cx="50%" cy="42%" r="48%">
+      <stop offset="0%" stop-color="#7F5BFF" stop-opacity="0.42" />
+      <stop offset="55%" stop-color="#4A42B5" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#12121D" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="pLeftLeg" x1="15%" y1="100%" x2="75%" y2="10%">
+      <stop offset="0%" stop-color="#171B4D" />
+      <stop offset="45%" stop-color="#3546D8" />
+      <stop offset="100%" stop-color="#8A70FF" />
+    </linearGradient>
+    <linearGradient id="pRightLeg" x1="20%" y1="100%" x2="85%" y2="5%">
+      <stop offset="0%" stop-color="#6036F0" />
+      <stop offset="52%" stop-color="#333DA8" />
+      <stop offset="100%" stop-color="#7B5EFF" />
+    </linearGradient>
+    <linearGradient id="pDiagRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D7C8FF" />
+      <stop offset="40%" stop-color="#8C6EFF" />
+      <stop offset="100%" stop-color="#6A38FF" />
+    </linearGradient>
+    <linearGradient id="pCyanRim" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#48D4FF" />
+      <stop offset="50%" stop-color="#8F75FF" />
+      <stop offset="100%" stop-color="#DFD0FF" />
+    </linearGradient>
+    <filter id="pGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <ellipse cx="210" cy="128" rx="145" ry="110" fill="url(#logoAura)" />
+
+  <g transform="translate(106, 22) scale(1.62)" filter="url(#pGlow)">
+    <path d="M31 93 C28 91, 35 55, 42 36 C47 26, 61 27, 63 39 L53 71 C49 84, 38 97, 31 93 Z" fill="url(#pLeftLeg)" stroke="url(#pCyanRim)" stroke-width="1.5" />
+    <path d="M68 89 C67 76, 75 46, 86 33 C92 27, 100 28, 99 35 C97 49, 90 77, 82 91 C78 97, 69 96, 68 89 Z" fill="url(#pRightLeg)" stroke="url(#pCyanRim)" stroke-width="1.5" />
+    <path d="M40 43 C44 26, 60 25, 66 39 L86 78 C91 88, 82 99, 72 95 C66 93, 62 87, 58 79 L44 50 C42 46, 39 46, 40 43 Z" fill="url(#pDiagRibbon)" fill-opacity="0.92" stroke="#D5C6FF" stroke-width="1.1" />
+  </g>
+
+  <text x="195" y="274" text-anchor="middle" fill="#FFFFFF" font-family="DejaVu Sans, sans-serif" font-size="48" font-weight="700" letter-spacing="-1">nuntium</text>
+  <text x="321" y="255" text-anchor="start" fill="#8B7DFF" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" letter-spacing="1">OS</text>
+</svg>
