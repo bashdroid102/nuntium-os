@@ -15,16 +15,18 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$TMP_DIR/tor-data" "$TMP_DIR/profile"
 chmod 700 "$TMP_DIR/tor-data"
+touch "$TMP_DIR/empty-defaults"
 
 cat > "$TMP_DIR/torrc" <<EOF
 SocksPort 127.0.0.1:9150
+ControlPort 0
 DataDirectory $TMP_DIR/tor-data
 Log notice file $TMP_DIR/tor.log
 EOF
 
 notify-send -a "Nuntium OS" -i network-vpn "Режим Tor" "Подключение к сети Tor (10–20 сек)..." || true
 
-tor -f "$TMP_DIR/torrc" >/dev/null 2>&1 &
+tor --defaults-torrc "$TMP_DIR/empty-defaults" -f "$TMP_DIR/torrc" >"$TMP_DIR/tor-console.log" 2>&1 &
 TOR_PID=$!
 
 READY=0
@@ -40,7 +42,8 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$READY" -ne 1 ]; then
-    notify-send -a "Nuntium OS" -u critical "Ошибка Tor" "Не удалось подключиться к сети Tor. Проверь интернет или включи VPN." || true
+    ERR_LINE=$(tail -n 3 "$TMP_DIR/tor.log" "$TMP_DIR/tor-console.log" 2>/dev/null | grep -E "err|warn|Bootstrapped" | tail -n 1 || true)
+    notify-send -a "Nuntium OS" -u critical "Ошибка Tor" "Не удалось подключиться к сети Tor. ${ERR_LINE:-Проверь интернет или включи Hysteria 2.}" || true
     exit 1
 fi
 

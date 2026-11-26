@@ -50,6 +50,7 @@ table inet nuntium_killswitch {{
         type filter hook output priority 0; policy drop;
         oifname "lo" accept
         oifname "nuntium0" accept
+        ct state established,related accept
         udp sport 68 udp dport 67 accept
         ip daddr {server_ip} udp dport {server_port} accept
 {lan_rule}    }}
@@ -104,7 +105,6 @@ def enable_vpn_mode() -> None:
             "Профиль Hysteria 2 не заполнен! Отредактируй /etc/nuntium/vpn.toml (команда: sudo nano /etc/nuntium/vpn.toml)."
         )
 
-    # Останавливаем старый туннель и временно снимаем старую таблицу, чтобы разрешить DNS сервера
     run(["systemctl", "stop", "nuntium-vpn.service"], check=False)
     remove_killswitch()
 
@@ -130,8 +130,11 @@ def enable_vpn_mode() -> None:
             "password": obfs_password,
         }
 
+    # sniff и перехват DNS (порт 53) обязательно идут ДО правила ip_is_private
     route_rules: list[dict] = [
+        {"action": "sniff"},
         {"protocol": "dns", "action": "hijack-dns"},
+        {"port": 53, "action": "hijack-dns"},
     ]
     if allow_lan:
         route_rules.append({"ip_is_private": True, "outbound": "direct"})
@@ -154,9 +157,10 @@ def enable_vpn_mode() -> None:
                 "tag": "tun-in",
                 "interface_name": "nuntium0",
                 "address": ["172.19.0.1/30"],
+                "mtu": 1360,
                 "auto_route": True,
                 "strict_route": True,
-                "stack": "system",
+                "stack": "mixed",
             }
         ],
         "outbounds": [
@@ -174,7 +178,6 @@ def enable_vpn_mode() -> None:
     SINGBOX_CONFIG.write_text(json.dumps(singbox_cfg, indent=2), encoding="utf-8")
     os.chmod(SINGBOX_CONFIG, 0o600)
 
-    # Сначала включаем замок Kill-Switch, затем поднимаем туннель
     apply_killswitch(server_ip, port, allow_lan)
     res = run(["systemctl", "start", "nuntium-vpn.service"], check=False)
     if res.returncode != 0:
