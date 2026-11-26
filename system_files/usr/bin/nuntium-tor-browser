@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TMP_DIR=$(mktemp -d /tmp/nuntium-tor.XXXXXX)
+TOR_PID=""
+
+cleanup() {
+    if [ -n "$TOR_PID" ] && kill -0 "$TOR_PID" 2>/dev/null; then
+        kill "$TOR_PID" 2>/dev/null || true
+        wait "$TOR_PID" 2>/dev/null || true
+    fi
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$TMP_DIR/tor-data" "$TMP_DIR/profile"
+chmod 700 "$TMP_DIR/tor-data"
+
+cat > "$TMP_DIR/torrc" <<EOF
+SocksPort 127.0.0.1:9150
+DataDirectory $TMP_DIR/tor-data
+Log notice file $TMP_DIR/tor.log
+EOF
+
+notify-send -a "Nuntium OS" -i network-vpn "Режим Tor" "Подключение к сети Tor (10–20 сек)..." || true
+
+tor -f "$TMP_DIR/torrc" >/dev/null 2>&1 &
+TOR_PID=$!
+
+READY=0
+for _ in $(seq 1 60); do
+    if ! kill -0 "$TOR_PID" 2>/dev/null; then
+        break
+    fi
+    if [ -f "$TMP_DIR/tor.log" ] && grep -q "Bootstrapped 100%" "$TMP_DIR/tor.log"; then
+        READY=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" -ne 1 ]; then
+    notify-send -a "Nuntium OS" -u critical "Ошибка Tor" "Не удалось подключиться к сети Tor. Проверь интернет или включи VPN." || true
+    exit 1
+fi
+
+# Строгий анти-утечный профиль Firefox (уничтожается после закрытия окна)
+cat > "$TMP_DIR/profile/user.js" <<'EOF'
+user_pref("network.proxy.type", 1);
+user_pref("network.proxy.socks", "127.0.0.1");
+user_pref("network.proxy.socks_port", 9150);
+user_pref("network.proxy.socks_version", 5);
+user_pref("network.proxy.socks_remote_dns", true);
+user_pref("network.proxy.no_proxies_on", "");
+user_pref("media.peerconnection.enabled", false);
+user_pref("privacy.resistFingerprinting", true);
+user_pref("dom.security.https_only_mode", true);
+user_pref("browser.privatebrowsing.autostart", true);
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("geo.enabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+EOF
+
+notify-send -a "Nuntium OS" -i security-high "Режим Tor готов" "Открываю изолированный браузер. После закрытия все следы будут стерты." || true
+
+firefox --no-remote --profile "$TMP_DIR/profile" "https://check.torproject.org"

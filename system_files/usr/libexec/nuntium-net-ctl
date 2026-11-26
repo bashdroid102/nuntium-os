@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+import ipaddress
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+CONFIG_DIR = Path("/etc/nuntium")
+CONFIG_PATH = CONFIG_DIR / "vpn.toml"
+EXAMPLE_CONFIG = Path("/usr/share/nuntium/vpn.toml.example")
+RUN_DIR = Path("/run/nuntium-vpn")
+SINGBOX_CONFIG = RUN_DIR / "sing-box.json"
+STATE_FILE = RUN_DIR / "state.json"
+
+
+def run(cmd: list[str], input_text: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, input=input_text, text=True, capture_output=True, check=check)
+
+
+def ensure_config() -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_PATH.exists() and EXAMPLE_CONFIG.exists():
+        shutil.copy2(EXAMPLE_CONFIG, CONFIG_PATH)
+        os.chmod(CONFIG_PATH, 0o600)
+
+
+def write_state(mode: str, server_ip: str = "", message: str = "") -> None:
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(RUN_DIR, 0o755)
+    data = {"mode": mode, "server_ip": server_ip, "message": message}
+    STATE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.chmod(STATE_FILE, 0o644)
+
+
+def remove_killswitch() -> None:
+    nft_script = "table inet nuntium_killswitch\ndelete table inet nuntium_killswitch\n"
+    run(["nft", "-f", "-"], input_text=nft_script, check=False)
+
+
+def apply_killswitch(server_ip: str, server_port: int, allow_lan: bool) -> None:
+    lan_rule = "        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } accept\n" if allow_lan else ""
+    nft_script = f"""table inet nuntium_killswitch
+delete table inet nuntium_killswitch
+table inet nuntium_killswitch {{
+    chain output {{
+        type filter hook output priority 0; policy drop;
+        oifname "lo" accept
+        oifname "nuntium0" accept
+        udp sport 68 udp dport 67 accept
+        ip daddr {server_ip} udp dport {server_port} accept
+{lan_rule}    }}
+}}
+"""
+    res = run(["nft", "-f", "-"], input_text=nft_script, check=False)
+    if res.returncode != 0:
+        raise RuntimeError(f"Ошибка применения nftables Kill-Switch: {res.stderr.strip()}")
+
+
+def resolve_ipv4(host: str) -> str:
+    try:
+        ipaddress.IPv4Address(host)
+        return host
+    except ValueError:
+        pass
+    infos = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_DGRAM)
+    if not infos:
+        raise RuntimeError(f"Не удалось определить IPv4 для сервера '{host}'")
+    return infos[0][4][0]
+
+
+def enable_home_mode() -> None:
+    run(["systemctl", "stop", "nuntium-vpn.service"], check=False)
+    remove_killswitch()
+    if SINGBOX_CONFIG.exists():
+        SINGBOX_CONFIG.unlink()
+    write_state("home", message="Домашний Wi-Fi (защита ПК активна)")
+    print("OK: Режим «Домашний Wi-Fi» включен. Kill-Switch снят.")
+
+
+def enable_vpn_mode() -> None:
+    ensure_config()
+    with CONFIG_PATH.open("rb") as f:
+        cfg = tomllib.load(f)
+
+    hy2 = cfg.get("hysteria2", {})
+    net = cfg.get("network", {})
+
+    server = str(hy2.get("server", "")).strip()
+    port = int(hy2.get("port", 443))
+    password = str(hy2.get("password", "")).strip()
+    sni = str(hy2.get("sni", "")).strip() or server
+    insecure = bool(hy2.get("insecure", False))
+    obfs_password = str(hy2.get("obfs_password", "")).strip()
+    up_mbps = int(hy2.get("up_mbps", 50))
+    down_mbps = int(hy2.get("down_mbps", 100))
+    allow_lan = bool(net.get("allow_lan", True))
+
+    if not server or server == "YOUR_SERVER_IP_OR_DOMAIN" or not password or password == "YOUR_HYSTERIA2_PASSWORD":
+        raise RuntimeError(
+            "Профиль Hysteria 2 не заполнен! Отредактируй /etc/nuntium/vpn.toml (команда: sudo nano /etc/nuntium/vpn.toml)."
+        )
+
+    # Останавливаем старый туннель и временно снимаем старую таблицу, чтобы разрешить DNS сервера
+    run(["systemctl", "stop", "nuntium-vpn.service"], check=False)
+    remove_killswitch()
+
+    server_ip = resolve_ipv4(server)
+
+    hy2_outbound: dict = {
+        "type": "hysteria2",
+        "tag": "hy2-out",
+        "server": server_ip,
+        "server_port": port,
+        "up_mbps": up_mbps,
+        "down_mbps": down_mbps,
+        "password": password,
+        "tls": {
+            "enabled": True,
+            "server_name": sni,
+            "insecure": insecure,
+        },
+    }
+    if obfs_password:
+        hy2_outbound["obfs"] = {
+            "type": "salamander",
+            "password": obfs_password,
+        }
+
+    route_rules: list[dict] = [
+        {"protocol": "dns", "action": "hijack-dns"},
+    ]
+    if allow_lan:
+        route_rules.append({"ip_is_private": True, "outbound": "direct"})
+
+    singbox_cfg = {
+        "log": {"level": "info", "timestamp": True},
+        "dns": {
+            "servers": [
+                {
+                    "tag": "remote-dns",
+                    "address": "https://1.1.1.1/dns-query",
+                    "detour": "hy2-out",
+                }
+            ],
+            "strategy": "ipv4_only",
+        },
+        "inbounds": [
+            {
+                "type": "tun",
+                "tag": "tun-in",
+                "interface_name": "nuntium0",
+                "address": ["172.19.0.1/30"],
+                "auto_route": True,
+                "strict_route": True,
+                "stack": "system",
+            }
+        ],
+        "outbounds": [
+            hy2_outbound,
+            {"type": "direct", "tag": "direct"},
+        ],
+        "route": {
+            "auto_detect_interface": True,
+            "rules": route_rules,
+            "final": "hy2-out",
+        },
+    }
+
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    SINGBOX_CONFIG.write_text(json.dumps(singbox_cfg, indent=2), encoding="utf-8")
+    os.chmod(SINGBOX_CONFIG, 0o600)
+
+    # Сначала включаем замок Kill-Switch, затем поднимаем туннель
+    apply_killswitch(server_ip, port, allow_lan)
+    res = run(["systemctl", "start", "nuntium-vpn.service"], check=False)
+    if res.returncode != 0:
+        write_state("vpn", server_ip=server_ip, message="Ошибка запуска sing-box (Kill-Switch активен)")
+        raise RuntimeError(f"Не удалось запустить nuntium-vpn.service: {res.stderr.strip()}")
+
+    write_state("vpn", server_ip=server_ip, message=f"Hysteria 2 активен ({server_ip}:{port}) + Kill-Switch")
+    print(f"OK: Включен режим Hysteria 2 ({server_ip}:{port}) с активным Kill-Switch.")
+
+
+def show_status() -> None:
+    vpn_active = run(["systemctl", "is-active", "nuntium-vpn.service"], check=False).stdout.strip() == "active"
+    ks_active = run(["nft", "list", "table", "inet", "nuntium_killswitch"], check=False).returncode == 0
+    mode = "vpn" if (vpn_active or ks_active) else "home"
+
+    status = {
+        "mode": mode,
+        "vpn_service_active": vpn_active,
+        "killswitch_active": ks_active,
+        "config_path": str(CONFIG_PATH),
+    }
+    print(json.dumps(status, ensure_ascii=False, indent=2))
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("Использование: nuntium-net-ctl [home|vpn|status|init-config]", file=sys.stderr)
+        return 1
+
+    cmd = sys.argv[1]
+    try:
+        if cmd == "home":
+            enable_home_mode()
+        elif cmd == "vpn":
+            enable_vpn_mode()
+        elif cmd == "status":
+            show_status()
+        elif cmd == "init-config":
+            ensure_config()
+            print(f"OK: Конфиг готов: {CONFIG_PATH}")
+        else:
+            print(f"Неизвестная команда: {cmd}", file=sys.stderr)
+            return 1
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

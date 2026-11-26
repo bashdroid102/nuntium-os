@@ -1,0 +1,25 @@
+# Конфигурация резервного VPN Nuntium OS (протокол Hysteria 2)
+# Заполни данные своего сервера и сохрани файл.
+
+[hysteria2]
+# IP-адрес или домен твоего сервера Hysteria 2
+server = "vpn.xn--d1abqcgkbcc2a2k.xn--p1ai"
+port = 443
+password = "gektorwin270619"
+
+# SNI для маскировки под обычный HTTPS/QUIC (например, домен сертификата сервера)
+sni = "vpn.xn--d1abqcgkbcc2a2k.xn--p1ai"
+
+# Поставь true, если на сервере самоподписанный сертификат
+insecure = false
+
+# Оставь пустым "", если обфускация Salamander на сервере не включена
+obfs_password = ""
+
+# Ограничения канала в Мбит/с для алгоритма Brutal (подстрой под свой тариф)
+up_mbps = 50
+down_mbps = 100
+
+[network]
+# Разрешить доступ к домашней локальной сети (роутер 192.168.x.x) при включенном Kill-Switch
+allow_lan = true

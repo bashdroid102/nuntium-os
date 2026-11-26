@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Nuntium Tor Browser
+Comment=Изолированный одноразовый браузер через сеть Tor
+Exec=/usr/bin/nuntium-tor-browser
+Icon=security-high
+Terminal=false
+Categories=Network;WebBrowser;Security;

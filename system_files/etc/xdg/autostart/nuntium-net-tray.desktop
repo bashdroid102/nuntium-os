@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Nuntium Network Shield
+Exec=/usr/bin/nuntium-net-tray
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2
+NoDisplay=true

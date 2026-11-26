@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CMD="${1:-status}"
+
+case "$CMD" in
+    home|vpn|init-config)
+        exec pkexec /usr/libexec/nuntium-net-ctl "$CMD"
+        ;;
+    status)
+        exec /usr/libexec/nuntium-net-ctl status
+        ;;
+    tor)
+        exec /usr/bin/nuntium-tor-browser
+        ;;
+    ip)
+        echo "Проверка внешнего IP..."
+        curl -fsSL --max-time 8 https://api.ipify.org && echo ""
+        ;;
+    edit)
+        pkexec /usr/libexec/nuntium-net-ctl init-config >/dev/null
+        exec sudo nano /etc/nuntium/vpn.toml
+        ;;
+    *)
+        echo "Nuntium OS Network Control"
+        echo "Команды:"
+        echo "  nuntium-net home    — Домашний Wi-Fi (роутер с VPN + защита ноутбука)"
+        echo "  nuntium-net vpn     — Выездной режим (Hysteria 2 + Kill-Switch)"
+        echo "  nuntium-net tor     — Запустить изолированный Tor-браузер"
+        echo "  nuntium-net status  — Показать статус сети и Kill-Switch"
+        echo "  nuntium-net ip      — Проверить текущий внешний IP"
+        echo "  nuntium-net edit    — Редактировать профиль Hysteria 2 (/etc/nuntium/vpn.toml)"
+        ;;
+esac
