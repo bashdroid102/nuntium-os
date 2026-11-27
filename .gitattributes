@@ -3,4 +3,6 @@
 *.conf text eol=lf
 *.toml text eol=lf
 *.yml text eol=lf
+*.desktop text eol=lf
 Containerfile text eol=lf
+*.msi binary

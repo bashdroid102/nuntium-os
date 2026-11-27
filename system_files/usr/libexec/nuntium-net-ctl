@@ -36,6 +36,14 @@ def write_state(mode: str, server_ip: str = "", message: str = "") -> None:
     os.chmod(STATE_FILE, 0o644)
 
 
+def set_loose_rp_filter() -> None:
+    for rp_file in Path("/proc/sys/net/ipv4/conf").glob("*/rp_filter"):
+        try:
+            rp_file.write_text("2\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
 def remove_killswitch() -> None:
     nft_script = "table inet nuntium_killswitch\ndelete table inet nuntium_killswitch\n"
     run(["nft", "-f", "-"], input_text=nft_script, check=False)
@@ -107,6 +115,7 @@ def enable_vpn_mode() -> None:
 
     run(["systemctl", "stop", "nuntium-vpn.service"], check=False)
     remove_killswitch()
+    set_loose_rp_filter()
 
     server_ip = resolve_ipv4(server)
 
@@ -130,7 +139,6 @@ def enable_vpn_mode() -> None:
             "password": obfs_password,
         }
 
-    # sniff и перехват DNS (порт 53) обязательно идут ДО правила ip_is_private
     route_rules: list[dict] = [
         {"action": "sniff"},
         {"protocol": "dns", "action": "hijack-dns"},

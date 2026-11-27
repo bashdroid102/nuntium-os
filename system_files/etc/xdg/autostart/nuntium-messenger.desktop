@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Nuntium Messenger
+Exec=/usr/bin/nuntium-messenger
+Icon=nuntium-start
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2

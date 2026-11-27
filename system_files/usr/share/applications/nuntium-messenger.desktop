@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nuntium
+GenericName=Encrypted Messenger
+Comment=Защищенный мессенджер Nuntium (доверенная системная среда)
+Exec=/usr/bin/nuntium-messenger
+Icon=nuntium-start
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+StartupNotify=true

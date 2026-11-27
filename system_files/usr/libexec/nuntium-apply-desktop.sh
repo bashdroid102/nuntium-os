@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-STAMP_FILE="$HOME/.config/.nuntium-desktop-v3"
+STAMP_FILE="$HOME/.config/.nuntium-desktop-v5"
 if [ -f "$STAMP_FILE" ]; then
     exit 0
 fi
@@ -21,7 +21,14 @@ plasma-apply-colorscheme NuntiumDark || true
 plasma-apply-colorscheme --accent-color "#7f77dd" || true
 kwriteconfig6 --file kdeglobals --group KDE --key SingleClick false
 
-# 3. Эффект матового стекла (Blur), превью окон по Alt+Tab и центрирование новых окон
+# 3. Раскладка клавиатуры: Английская + Русская, переключение по Alt+Shift
+kwriteconfig6 --file kxkbrc --group Layout --key Use true
+kwriteconfig6 --file kxkbrc --group Layout --key LayoutList "us,ru"
+kwriteconfig6 --file kxkbrc --group Layout --key VariantList ","
+kwriteconfig6 --file kxkbrc --group Layout --key Options "grp:alt_shift_toggle"
+kwriteconfig6 --file kxkbrc --group Layout --key ResetOldOptions true
+
+# 4. Эффект матового стекла (Blur), превью окон по Alt+Tab и центрирование новых окон
 kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true
 kwriteconfig6 --file kwinrc --group Effect-blur --key BlurStrength 10
 kwriteconfig6 --file kwinrc --group Effect-blur --key NoiseStrength 2
@@ -29,17 +36,17 @@ kwriteconfig6 --file kwinrc --group TabBox --key LayoutName "thumbnail_grid"
 kwriteconfig6 --file kwinrc --group TabBox --key HighlightWindows true
 kwriteconfig6 --file kwinrc --group Windows --key Placement "Centered"
 
-# 4. Привычные горячие клавиши Windows
+# 5. Привычные горячие клавиши Windows
 kwriteconfig6 --file kglobalshortcutsrc --group kwin --key "Show Desktop" "Meta+D,Meta+D,Peek at Desktop"
 kwriteconfig6 --file kglobalshortcutsrc --group ksmserver --key "Lock Session" $'Meta+L\tScreensaver,Meta+L\tScreensaver,Lock Session'
 kwriteconfig6 --file kglobalshortcutsrc --group services --group org.kde.dolphin.desktop --key "_launch" "Meta+E"
 
-# 5. Обои Nuntium OS (темно-индиговый градиент с сеткой и светящимся логотипом)
+# 6. Обои Nuntium OS (темно-индиговый градиент с сеткой и светящимся логотипом)
 if [ -f /usr/share/wallpapers/Nuntium/contents/images/1920x1080.png ]; then
     plasma-apply-wallpaperimage /usr/share/wallpapers/Nuntium/contents/images/1920x1080.png || true
 fi
 
-# 6. Нижняя полупрозрачная панель с центрированными иконками
+# 7. Нижняя полупрозрачная панель с центрированными иконками и закрепленным Nuntium
 QDBUS=$(command -v qdbus6 || command -v qdbus-qt6 || command -v qdbus || true)
 if [ -n "$QDBUS" ]; then
     for _ in $(seq 1 15); do
@@ -70,6 +77,7 @@ if [ -n "$QDBUS" ]; then
         var tasks = panel.addWidget("org.kde.plasma.icontasks");
         tasks.currentConfigGroup = ["General"];
         tasks.writeConfig("launchers", [
+            "applications:nuntium-messenger.desktop",
             "applications:org.kde.dolphin.desktop",
             "applications:org.kde.konsole.desktop",
             "applications:systemsettings.desktop",
@@ -89,6 +97,7 @@ if [ -n "$QDBUS" ]; then
         panel.addWidget("org.kde.plasma.showdesktop");
     ' || true
 
+    $QDBUS org.kde.keyboard /Layouts org.kde.keyboard.reloadConfig || true
     $QDBUS org.kde.KWin /KWin reconfigure || true
 fi
 
