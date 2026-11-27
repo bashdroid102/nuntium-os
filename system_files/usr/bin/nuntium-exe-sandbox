@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+PERSISTENT_DIR = Path.home() / ".local" / "share" / "nuntium-sandbox" / "persistent"
+SANDBOX_MOUNT = "/sandbox-app"
+
+
+def notify(title: str, body: str, urgency: str = "normal") -> None:
+    subprocess.run(
+        ["notify-send", "-a", "Nuntium Sandbox", "-u", urgency, "-i", "nuntium-start", title, body],
+        check=False,
+    )
+
+
+def detect_virt() -> bool:
+    return subprocess.run(["systemd-detect-virt", "-q"], check=False).returncode == 0
+
+
+def show_launch_dialog(target: Path, default_offline: bool = False) -> dict | None:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QCheckBox,
+        QDialog,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QRadioButton,
+        QVBoxLayout,
+    )
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dlg = QDialog()
+    dlg.setWindowTitle("Nuntium Sandbox — Запуск Windows-файла")
+    dlg.setMinimumWidth(480)
+    dlg.setStyleSheet("""
+        QDialog {
+            background-color: #1A1928;
+            color: #F0F0F8;
+            font-size: 13px;
+        }
+        QLabel#title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #FFFFFF;
+        }
+        QLabel#path {
+            background-color: #141320;
+            border: 1px solid #32314A;
+            border-radius: 8px;
+            padding: 8px 10px;
+            color: #B8B5D6;
+            font-family: monospace;
+        }
+        QLabel#hint {
+            color: #9C99BA;
+            font-size: 12px;
+        }
+        QRadioButton, QCheckBox {
+            spacing: 8px;
+            padding: 3px 0;
+        }
+        QRadioButton::indicator:checked, QCheckBox::indicator:checked {
+            background-color: #7F77DD;
+            border: 2px solid #B6AEFF;
+            border-radius: 4px;
+        }
+        QPushButton {
+            background-color: #2B2A3E;
+            color: #F0F0F8;
+            border: 1px solid #444263;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background-color: #383652;
+        }
+        QPushButton#primary {
+            background-color: #7F77DD;
+            border: 1px solid #A49AFF;
+            color: #FFFFFF;
+        }
+        QPushButton#primary:hover {
+            background-color: #9289F0;
+        }
+    """)
+
+    layout = QVBoxLayout(dlg)
+    layout.setSpacing(12)
+    layout.setContentsMargins(20, 18, 20, 18)
+
+    lbl_title = QLabel(f"Запуск в песочнице: {target.name}")
+    lbl_title.setObjectName("title")
+    layout.addWidget(lbl_title)
+
+    lbl_path = QLabel(str(target))
+    lbl_path.setObjectName("path")
+    lbl_path.setWordWrap(True)
+    layout.addWidget(lbl_path)
+
+    lbl_hint = QLabel(
+        "Личные файлы, браузер и мессенджер Nuntium полностью скрыты от этой программы."
+    )
+    lbl_hint.setObjectName("hint")
+    lbl_hint.setWordWrap(True)
+    layout.addWidget(lbl_hint)
+
+    rb_ephemeral = QRadioButton("Одноразовая песочница (все изменения удалятся после закрытия)")
+    rb_persistent = QRadioButton("Общая изолированная среда Windows (сохраняет установленные программы)")
+    rb_ephemeral.setChecked(True)
+    layout.addWidget(rb_ephemeral)
+    layout.addWidget(rb_persistent)
+
+    cb_offline = QCheckBox("Запустить без интернета (полная сетевая изоляция)")
+    cb_offline.setChecked(default_offline)
+    layout.addWidget(cb_offline)
+
+    cb_mount_dir = QCheckBox("Открыть доступ ко всей папке программы (нужно для portable-приложений с DLL)")
+    cb_mount_dir.setChecked(False)
+    layout.addWidget(cb_mount_dir)
+
+    btn_row = QHBoxLayout()
+    btn_row.addStretch()
+    btn_cancel = QPushButton("Отмена")
+    btn_run = QPushButton("Запустить в песочнице")
+    btn_run.setObjectName("primary")
+    btn_run.setDefault(True)
+    btn_cancel.clicked.connect(dlg.reject)
+    btn_run.clicked.connect(dlg.accept)
+    btn_row.addWidget(btn_cancel)
+    btn_row.addWidget(btn_run)
+    layout.addLayout(btn_row)
+
+    dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    if dlg.exec() != QDialog.DialogCode.Accepted:
+        return None
+
+    return {
+        "persistent": rb_persistent.isChecked(),
+        "offline": cb_offline.isChecked(),
+        "mount_dir": cb_mount_dir.isChecked(),
+    }
+
+
+def run_in_sandbox(target: Path, persistent: bool, offline: bool, mount_dir: bool) -> int:
+    real_home = os.path.realpath(os.path.expanduser("~"))
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+
+    # Защита от случайного проброса всего домашнего каталога внутрь песочницы
+    if mount_dir and str(target.parent.resolve()) == real_home:
+        notify(
+            "Ограничение безопасности",
+            "Файл лежит в корне домашней папки — монтирую только сам файл без доступа к остальным данным.",
+        )
+        mount_dir = False
+
+    temp_ctx = None
+    if persistent:
+        sandbox_home = PERSISTENT_DIR
+        sandbox_home.mkdir(parents=True, exist_ok=True)
+    else:
+        temp_ctx = tempfile.TemporaryDirectory(prefix="nuntium-sandbox-")
+        sandbox_home = Path(temp_ctx.name)
+
+    try:
+        cmd: list[str] = [
+            "bwrap",
+            "--unshare-all",
+            "--die-with-parent",
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/sbin", "/sbin",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib64", "/lib64",
+            "--ro-bind", "/etc", "/etc",
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--ro-bind", "/sys", "/sys",
+            "--tmpfs", "/tmp",
+            "--tmpfs", "/run",
+            "--tmpfs", "/var",
+            "--dir", "/var/tmp",
+        ]
+
+        if not offline:
+            cmd.append("--share-net")
+
+        if Path("/dev/dri").exists():
+            cmd.extend(["--dev-bind", "/dev/dri", "/dev/dri"])
+
+        # Подменяем $HOME на изолированную папку песочницы (совместимо с /var/home в Fedora Atomic)
+        if real_home.startswith("/var/home/"):
+            cmd.extend(["--dir", "/var/home", "--symlink", "var/home", "/home"])
+        else:
+            cmd.extend(["--dir", "/home"])
+        cmd.extend(["--bind", str(sandbox_home), real_home])
+
+        # Выборочный проброс дисплея и звука (без системной шины D-Bus)
+        if Path("/tmp/.X11-unix").exists():
+            cmd.extend(["--bind", "/tmp/.X11-unix", "/tmp/.X11-unix"])
+
+        cmd.extend(["--dir", xdg_runtime])
+        wayland_display = os.environ.get("WAYLAND_DISPLAY")
+        if wayland_display:
+            wl_sock = Path(xdg_runtime) / wayland_display
+            if wl_sock.exists():
+                cmd.extend(["--bind", str(wl_sock), str(wl_sock)])
+
+        for audio_entry in ("pipewire-0", "pulse"):
+            audio_path = Path(xdg_runtime) / audio_entry
+            if audio_path.exists():
+                cmd.extend(["--bind", str(audio_path), str(audio_path)])
+
+        xauth = os.environ.get("XAUTHORITY")
+        if xauth and Path(xauth).exists():
+            cmd.extend(["--ro-bind", xauth, xauth])
+
+        # Проброс самого .exe/.msi или папки portable-программы
+        if mount_dir:
+            cmd.extend(["--bind", str(target.parent), SANDBOX_MOUNT])
+        else:
+            cmd.extend(["--dir", SANDBOX_MOUNT, "--ro-bind", str(target), f"{SANDBOX_MOUNT}/{target.name}"])
+
+        cmd.extend([
+            "--chdir", SANDBOX_MOUNT,
+            "--setenv", "HOME", real_home,
+            "--setenv", "WINEARCH", "win64",
+            "--setenv", "WINEPREFIX", f"{real_home}/.wine",
+            "--setenv", "WINEDLLOVERRIDES", "mscoree,mshtml=",
+            "--setenv", "LANG", os.environ.get("LANG", "ru_RU.UTF-8"),
+            "--setenv", "LC_ALL", os.environ.get("LC_ALL", "ru_RU.UTF-8"),
+        ])
+
+        if detect_virt():
+            cmd.extend(["--setenv", "SKIKO_RENDER_API", "SOFTWARE"])
+
+        inner_target = f"{SANDBOX_MOUNT}/{target.name}"
+        if target.suffix.lower() == ".msi":
+            wine_cmd = ["wine", "msiexec", "/i", inner_target]
+        else:
+            wine_cmd = ["wine", inner_target]
+
+        # Запускаем через sh + wineserver -w, чтобы PID-неймспейс не закрывался раньше дочерних окон установщика
+        cmd.extend([
+            "--",
+            "/usr/bin/sh",
+            "-c",
+            '"$@"; rc=$?; wineserver -w 2>/dev/null || true; exit $rc',
+            "--",
+            *wine_cmd,
+        ])
+
+        mode_label = "постоянной изолированной среде" if persistent else "одноразовой песочнице"
+        net_label = " (без сети)" if offline else ""
+        notify("Nuntium Sandbox", f"Запускаю {target.name} в {mode_label}{net_label}...")
+
+        result = subprocess.run(cmd, check=False)
+        return result.returncode
+    finally:
+        if temp_ctx is not None:
+            temp_ctx.cleanup()
+            notify("Nuntium Sandbox", f"Сеанс {target.name} завершен — одноразовая песочница очищена.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Изолированный запуск Windows-файлов (.exe / .msi) в песочнице Nuntium OS"
+    )
+    parser.add_argument("file", nargs="?", help="Путь к .exe или .msi файлу")
+    parser.add_argument("--persistent", action="store_true", help="Использовать общую изолированную среду")
+    parser.add_argument("--offline", action="store_true", help="Отключить доступ к сети")
+    parser.add_argument("--mount-dir", action="store_true", help="Смонтировать всю папку программы")
+    parser.add_argument("--no-gui", action="store_true", help="Запустить сразу без окна подтверждения")
+    parser.add_argument(
+        "--reset-persistent",
+        action="store_true",
+        help="Полностью очистить общую изолированную среду Windows",
+    )
+    args = parser.parse_args()
+
+    if args.reset_persistent:
+        if PERSISTENT_DIR.exists():
+            shutil.rmtree(PERSISTENT_DIR)
+            print(f"OK: Очищена папка {PERSISTENT_DIR}")
+            notify("Nuntium Sandbox", "Общая изолированная среда Windows полностью очищена.")
+        else:
+            print("Среда уже пуста.")
+        return 0
+
+    if not args.file:
+        parser.print_help()
+        return 1
+
+    target = Path(args.file).expanduser().resolve()
+    if not target.is_file():
+        notify("Ошибка Nuntium Sandbox", f"Файл не найден: {target}", urgency="critical")
+        print(f"ERROR: Файл не найден: {target}", file=sys.stderr)
+        return 1
+
+    persistent = args.persistent
+    offline = args.offline
+    mount_dir = args.mount_dir
+
+    if not args.no_gui and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        choice = show_launch_dialog(target, default_offline=args.offline)
+        if choice is None:
+            return 0
+        persistent = choice["persistent"]
+        offline = choice["offline"]
+        mount_dir = choice["mount_dir"]
+
+    return run_in_sandbox(target, persistent=persistent, offline=offline, mount_dir=mount_dir)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,5 @@
+[Default Applications]
+application/x-ms-dos-executable=nuntium-exe-sandbox.desktop
+application/vnd.microsoft.portable-executable=nuntium-exe-sandbox.desktop
+application/x-msi=nuntium-exe-sandbox.desktop
+application/x-msdownload=nuntium-exe-sandbox.desktop

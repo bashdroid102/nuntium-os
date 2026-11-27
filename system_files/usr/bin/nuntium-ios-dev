@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTAINER_NAME="nuntium-ios"
+SWIFT_IMAGE="docker.io/library/swift:latest"
+
+cmd="${1:-help}"
+
+case "$cmd" in
+    status)
+        echo "=== Статус USB-стека iOS (usbmuxd / libimobiledevice) ==="
+        systemctl is-active usbmuxd.service 2>/dev/null && echo "usbmuxd: активен" || echo "usbmuxd: ожидает подключения iPhone/iPad по USB"
+        echo ""
+        echo "Подключенные iOS-устройства:"
+        DEVICES=$(idevice_id -l 2>/dev/null || true)
+        if [ -n "$DEVICES" ]; then
+            echo "$DEVICES"
+        else
+            echo "  (устройства не обнаружены)"
+        fi
+        echo ""
+        echo "=== Контейнер Swift / iOS Dev ($CONTAINER_NAME) ==="
+        if distrobox list --no-color 2>/dev/null | grep -qw "$CONTAINER_NAME"; then
+            echo "Контейнер установлен. Войти: nuntium-ios-dev enter"
+        else
+            echo "Контейнер еще не развернут. Установить: nuntium-ios-dev init"
+        fi
+        ;;
+
+    pair)
+        echo "Разблокируй iPhone/iPad и нажми «Доверять» на экране устройства..."
+        idevicepair pair
+        ideviceinfo -s || true
+        ;;
+
+    syslog)
+        echo "Живой журнал подключенного iOS-устройства (выход: Ctrl+C)..."
+        exec idevicesyslog
+        ;;
+
+    init)
+        echo "=== Развертывание изолированного контейнера Swift + iOS Dev ($CONTAINER_NAME) ==="
+        if ! distrobox list --no-color 2>/dev/null | grep -qw "$CONTAINER_NAME"; then
+            distrobox create \
+                --name "$CONTAINER_NAME" \
+                --image "$SWIFT_IMAGE" \
+                --yes \
+                --additional-packages "python3 python3-pip python3-venv libimobiledevice-utils usbmuxd zip unzip"
+        else
+            echo "Контейнер $CONTAINER_NAME уже создан, проверяю инструменты..."
+        fi
+
+        echo "=== Установка pymobiledevice3 (поддержка iOS 17+) внутри контейнера ==="
+        distrobox enter "$CONTAINER_NAME" -- bash -lc '
+            if [ ! -d "$HOME/.local/share/ios-venv" ]; then
+                python3 -m venv "$HOME/.local/share/ios-venv"
+            fi
+            "$HOME/.local/share/ios-venv/bin/pip" install --upgrade pip pymobiledevice3
+            mkdir -p "$HOME/.local/bin"
+            ln -sf "$HOME/.local/share/ios-venv/bin/pymobiledevice3" "$HOME/.local/bin/pymobiledevice3"
+            swift --version
+        '
+        echo ""
+        echo "Готово! Запусти среду командой: nuntium-ios-dev enter"
+        ;;
+
+    enter)
+        if ! distrobox list --no-color 2>/dev/null | grep -qw "$CONTAINER_NAME"; then
+            echo "Контейнер еще не создан. Сначала выполни: nuntium-ios-dev init"
+            exit 1
+        fi
+        exec distrobox enter "$CONTAINER_NAME"
+        ;;
+
+    remove)
+        distrobox rm --force "$CONTAINER_NAME"
+        echo "Контейнер $CONTAINER_NAME удален."
+        ;;
+
+    *)
+        echo "Nuntium OS — Среда iOS-разработки (Swift + libimobiledevice)"
+        echo "Команды:"
+        echo "  nuntium-ios-dev status  — Проверить USB-устройства iOS и статус контейнера"
+        echo "  nuntium-ios-dev pair    — Выполнить сопряжение (Trust) с подключенным iPhone/iPad"
+        echo "  nuntium-ios-dev syslog  — Смотреть живой лог подключенного iPhone/iPad"
+        echo "  nuntium-ios-dev init    — Развернуть контейнер Distrobox со Swift и pymobiledevice3"
+        echo "  nuntium-ios-dev enter   — Войти в оболочку Swift / iOS Dev"
+        echo "  nuntium-ios-dev remove  — Удалить контейнер и освободить место на диске"
+        ;;
+esac

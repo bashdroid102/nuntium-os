@@ -6,7 +6,7 @@ DNF=$(command -v dnf5 || command -v dnf)
 NUNTIUM_MSI_URL="https://github.com/bashdroid102/nuntium-os/releases/download/app-assets/Nuntium.msi"
 NUNTIUM_MSI_PATH="/usr/share/nuntium/app/Nuntium.msi"
 
-echo "=== [1/8] Установка стека безопасности, AMD Vulkan, Wine, Tor, PyQt6 и VMware tools ==="
+echo "=== [1/8] Установка стека безопасности, AMD Vulkan, Wine, iOS USB, Tor, PyQt6 и VMware tools ==="
 $DNF install -y \
     bubblewrap \
     usbguard \
@@ -29,8 +29,16 @@ $DNF install -y \
     wine \
     liberation-fonts \
     cabextract \
+    usbmuxd \
+    libimobiledevice \
+    libimobiledevice-utils \
+    desktop-file-utils \
+    libnotify \
     nano \
     fastfetch
+
+# Опциональный драйвер монтирования файлов iOS (не роняет сборку, если пакет временно отсутствует)
+$DNF install -y ifuse || true
 
 echo "=== [2/8] Установка ядра sing-box (поддержка Hysteria 2 TUN) ==="
 SINGBOX_VER="1.11.4"
@@ -101,8 +109,13 @@ sed -i 's/\r$//' \
     /usr/bin/nuntium-net-tray \
     /usr/bin/nuntium-tor-browser \
     /usr/bin/nuntium-messenger \
+    /usr/bin/nuntium-exe-sandbox \
+    /usr/bin/nuntium-ios-dev \
     /usr/share/applications/nuntium-messenger.desktop \
+    /usr/share/applications/nuntium-exe-sandbox.desktop \
+    /usr/share/kio/servicemenus/nuntium-sandbox.desktop \
     /etc/xdg/autostart/nuntium-messenger.desktop \
+    /etc/xdg/mimeapps.list \
     /usr/share/nuntium/nuntium-wine.cil \
     /usr/lib/systemd/system/nuntium-selinux-wine.service \
     /etc/NetworkManager/conf.d/10-nuntium-privacy.conf \
@@ -116,7 +129,16 @@ chmod +x \
     /usr/bin/nuntium-net \
     /usr/bin/nuntium-net-tray \
     /usr/bin/nuntium-tor-browser \
-    /usr/bin/nuntium-messenger
+    /usr/bin/nuntium-messenger \
+    /usr/bin/nuntium-exe-sandbox \
+    /usr/bin/nuntium-ios-dev
+
+chmod 644 \
+    /usr/share/applications/nuntium-exe-sandbox.desktop \
+    /usr/share/kio/servicemenus/nuntium-sandbox.desktop \
+    /etc/xdg/mimeapps.list
+
+update-desktop-database /usr/share/applications || true
 
 # Иконка кнопки Пуск и мессенджера Nuntium
 install -d /usr/share/icons/hicolor/scalable/apps
@@ -168,4 +190,4 @@ echo "=== [8/8] Очистка кэшей ==="
 $DNF clean all
 rm -rf /tmp/* /var/tmp/* /var/cache/dnf/* /var/cache/libdnf5/*
 
-echo "=== Сборка слоя Nuntium OS (Шаг 4 — Integrated Nuntium + SELinux Wine Policy) успешно завершена ==="
+echo "=== Сборка слоя Nuntium OS (Шаг 5 — Sandbox .exe & iOS Dev) успешно завершена ==="

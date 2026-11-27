@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nuntium Sandbox (Windows .exe/.msi)
+Comment=Изолированный запуск Windows-программ в песочнице Bubblewrap + Wine
+Exec=/usr/bin/nuntium-exe-sandbox %f
+Icon=security-high
+Terminal=false
+NoDisplay=true
+MimeType=application/x-ms-dos-executable;application/vnd.microsoft.portable-executable;application/x-msi;application/x-msdownload;
+Categories=System;Security;
