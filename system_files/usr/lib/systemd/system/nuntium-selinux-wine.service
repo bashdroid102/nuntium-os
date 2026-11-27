@@ -1,0 +1,17 @@
+[Unit]
+Description=Apply Nuntium OS SELinux policy for Wine (execmod)
+After=local-fs.target
+Before=display-manager.service
+ConditionSecurity=selinux
+ConditionPathExists=/usr/share/nuntium/nuntium-wine.cil
+ConditionPathExists=!/var/lib/nuntium-selinux-wine-v1.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/semodule -i /usr/share/nuntium/nuntium-wine.cil
+ExecStart=/usr/sbin/setsebool -P selinuxuser_execmod on
+ExecStart=/usr/bin/touch /var/lib/nuntium-selinux-wine-v1.done
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

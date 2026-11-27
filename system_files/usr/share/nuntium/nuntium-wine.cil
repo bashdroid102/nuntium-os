@@ -1,0 +1,2 @@
+(allow kernel_t lib_t (file (execmod)))
+(allow unconfined_t lib_t (file (execmod)))

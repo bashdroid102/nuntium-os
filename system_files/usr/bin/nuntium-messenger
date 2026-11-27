@@ -38,7 +38,7 @@ export LANG="${LANG:-ru_RU.UTF-8}"
 export LC_ALL="${LC_ALL:-ru_RU.UTF-8}"
 
 # Автовыбор рендера для Kotlin/Compose (Skiko):
-# В виртуальной машине (VMware/VirtualBox) SOFTWARE исключает черное окно D3D12,
+# В ВМ (VMware/VirtualBox) SOFTWARE исключает черный экран без 3D-ускорения,
 # на реальном ноутбуке (AMD Radeon) используется аппаратный OPENGL.
 if [ -n "$RENDER_OVERRIDE" ]; then
     export SKIKO_RENDER_API="$RENDER_OVERRIDE"
@@ -85,9 +85,13 @@ if [ -f "$HASH_FILE" ]; then
     INSTALLED_HASH=$(cat "$HASH_FILE" || true)
 fi
 
-# Эксклюзивная блокировка, чтобы автозапуск и клик по иконке не запустили две установки сразу
+# Неблокирующая проверка: если установка уже идет в фоне, показываем уведомление вместо зависания
 exec 9>"$LOCK_FILE"
-flock 9
+if ! flock -n 9; then
+    notify-send -a "Nuntium OS" -i nuntium-start "Подготовка Nuntium" \
+        "Идет установка мессенджера, подожди несколько секунд..." || true
+    exit 0
+fi
 
 if [ "$FORCE_REINSTALL" -eq 1 ] || [ "$CURRENT_HASH" != "$INSTALLED_HASH" ] || ! find_nuntium_exe >/dev/null 2>&1; then
     notify-send -a "Nuntium OS" -i nuntium-start "Подготовка Nuntium" \
@@ -95,18 +99,20 @@ if [ "$FORCE_REINSTALL" -eq 1 ] || [ "$CURRENT_HASH" != "$INSTALLED_HASH" ] || !
 
     echo "=== $(date) Установка Nuntium.msi ===" >> "$LOG_FILE"
     if [ "$FORCE_REINSTALL" -eq 1 ]; then
+        wineserver -k 2>/dev/null || true
         rm -rf "$PREFIX_DIR"
     fi
 
-    wineboot --init >> "$LOG_FILE" 2>&1 || true
-    wineserver -w || true
+    timeout 120 wineboot --init >> "$LOG_FILE" 2>&1 || true
+    timeout 60 wineserver -w >> "$LOG_FILE" 2>&1 || true
 
-    if ! wine msiexec /i "$MSI_PATH" /qn /norestart >> "$LOG_FILE" 2>&1; then
+    if ! timeout 180 wine msiexec /i "$MSI_PATH" /qn /norestart >> "$LOG_FILE" 2>&1; then
+        wineserver -k 2>/dev/null || true
         notify-send -a "Nuntium OS" -u critical "Ошибка установки Nuntium" \
             "Подробности в логе: $LOG_FILE" || true
         exit 1
     fi
-    wineserver -w || true
+    timeout 60 wineserver -w >> "$LOG_FILE" 2>&1 || true
 
     echo "$CURRENT_HASH" > "$HASH_FILE"
     notify-send -a "Nuntium OS" -i nuntium-start "Nuntium готов" \
@@ -114,6 +120,7 @@ if [ "$FORCE_REINSTALL" -eq 1 ] || [ "$CURRENT_HASH" != "$INSTALLED_HASH" ] || !
 fi
 
 flock -u 9
+exec 9>&-
 
 EXE_PATH=$(find_nuntium_exe || true)
 if [ -z "$EXE_PATH" ]; then

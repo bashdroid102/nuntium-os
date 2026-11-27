@@ -3,8 +3,6 @@ set -ouex pipefail
 
 DNF=$(command -v dnf5 || command -v dnf)
 
-# Если Nuntium.msi больше 95 МБ, загрузи его в GitHub Releases и вставь прямую ссылку ниже.
-# Если файл < 95 МБ и лежит в system_files/usr/share/nuntium/app/Nuntium.msi — оставь строку пустой.
 NUNTIUM_MSI_URL="https://github.com/bashdroid102/nuntium-os/releases/download/app-assets/Nuntium.msi"
 NUNTIUM_MSI_PATH="/usr/share/nuntium/app/Nuntium.msi"
 
@@ -105,6 +103,8 @@ sed -i 's/\r$//' \
     /usr/bin/nuntium-messenger \
     /usr/share/applications/nuntium-messenger.desktop \
     /etc/xdg/autostart/nuntium-messenger.desktop \
+    /usr/share/nuntium/nuntium-wine.cil \
+    /usr/lib/systemd/system/nuntium-selinux-wine.service \
     /etc/NetworkManager/conf.d/10-nuntium-privacy.conf \
     /etc/systemd/resolved.conf.d/10-nuntium-dns.conf \
     /etc/polkit-1/rules.d/50-nuntium-net.rules \
@@ -152,6 +152,7 @@ systemctl disable nuntium-vpn.service || true
 echo "=== [7/8] Включение сервисов и пересборка initramfs с темой Plymouth ==="
 systemctl enable podman.socket
 systemctl enable vmtoolsd.service || true
+systemctl enable nuntium-selinux-wine.service
 
 KVER=$(ls /usr/lib/modules | head -n 1)
 DRACUT_NO_XATTR=1 dracut \
@@ -167,4 +168,4 @@ echo "=== [8/8] Очистка кэшей ==="
 $DNF clean all
 rm -rf /tmp/* /var/tmp/* /var/cache/dnf/* /var/cache/libdnf5/*
 
-echo "=== Сборка слоя Nuntium OS (Шаг 4 — Integrated Nuntium Messenger) успешно завершена ==="
+echo "=== Сборка слоя Nuntium OS (Шаг 4 — Integrated Nuntium + SELinux Wine Policy) успешно завершена ==="
